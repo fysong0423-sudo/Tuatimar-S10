@@ -20,9 +20,15 @@ async function githubOidcToken() {
 }
 
 async function collectorApi(payload) {
+  const sitesBypassToken = process.env.SITES_BYPASS_TOKEN;
+  if (!sitesBypassToken) throw new Error("Sites server access token is not configured");
   const response = await fetch(API_URL, {
     method: "POST",
-    headers: { authorization: `Bearer ${await githubOidcToken()}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${await githubOidcToken()}`,
+      "oai-sites-authorization": `Bearer ${sitesBypassToken}`,
+      "content-type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
   const result = await response.json().catch(() => ({}));
@@ -36,6 +42,12 @@ async function setOutput(name, value) {
 }
 
 async function claimJob() {
+  if (!process.env.SITES_BYPASS_TOKEN) {
+    await fs.rm(JOB_FILE, { force: true });
+    await setOutput("has_job", "false");
+    console.log("Sites server access token is not configured; collector is idle.");
+    return null;
+  }
   const result = await collectorApi({ action: "claim" });
   if (!result.job) {
     await fs.rm(JOB_FILE, { force: true });
