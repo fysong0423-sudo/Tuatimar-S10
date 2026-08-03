@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../db";
+import { ensureMonitoringSchema, getDb } from "../../../db";
 import {
+  amazonSalesSyncJobs,
   dailySales,
   manualBsrEntries,
   manualKeywordRanks,
@@ -8,14 +9,25 @@ import {
   products,
   refreshJobs,
 } from "../../../db/schema";
-import { DEFAULT_PRODUCT, MONITORED_KEYWORDS } from "../../../lib/monitoring-config";
+import {
+  createAmazonSalesReport,
+  downloadAmazonDailySales,
+  getAmazonSalesReport,
+} from "../../../lib/amazon-sales";
+import { AMAZON_US_ACCOUNT_SALES_KEY, DEFAULT_PRODUCT, MONITORED_KEYWORDS } from "../../../lib/monitoring-config";
 
 type AuthenticatedUser = { id: string; email: string };
 
 function authenticatedUser(request: Request): AuthenticatedUser | null {
-  const id = request.headers.get("oai-authenticated-user-id")?.trim();
   const email = request.headers.get("oai-authenticated-user-email")?.trim();
+  const id = request.headers.get("oai-authenticated-user-id")?.trim() || (email ? `email:${email.toLowerCase()}` : "");
   return id && email ? { id, email } : null;
+}
+
+function safeDiagnostic(error: unknown) {
+  const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : null;
+  const message = cause instanceof Error ? cause.message : "";
+  return message && /^[\w\s:().,'`-]{1,500}$/.test(message) ? message : error instanceof Error ? error.name : "UnknownError";
 }
 
 function errorMessage(error: unknown) {
@@ -46,7 +58,26 @@ function keywordSource(index: number) {
   return "优化长尾词";
 }
 
+function publicSalesSyncJob<T extends {
+  id: number;
+  salesDate: string;
+  productAsin: string;
+  status: string;
+  message: string | null;
+  requestedAt: string;
+}>(job: T) {
+  return {
+    id: job.id,
+    salesDate: job.salesDate,
+    productAsin: job.productAsin,
+    status: job.status,
+    message: job.message,
+    requestedAt: job.requestedAt,
+  };
+}
+
 async function ensureDefaults(user: AuthenticatedUser) {
+  await ensureMonitoringSchema();
   const db = await getDb();
   await db
     .insert(products)
@@ -58,23 +89,29 @@ async function ensureDefaults(user: AuthenticatedUser) {
     })
     .onConflictDoNothing({ target: products.asin });
 
-  await db
-    .insert(monitoredKeywords)
-    .values(
-      MONITORED_KEYWORDS.map((keyword, index) => ({
+  const keywordDefaults = MONITORED_KEYWORDS.map((keyword, index) => ({
         productAsin: DEFAULT_PRODUCT.asin,
         keyword,
         source: keywordSource(index),
         isActive: true,
         updatedByUserId: user.id,
         updatedByEmail: user.email,
-      })),
-    )
-    .onConflictDoNothing({ target: [monitoredKeywords.productAsin, monitoredKeywords.keyword] });
+      }));
+  for (let offset = 0; offset < keywordDefaults.length; offset += 8) {
+    await db
+      .insert(monitoredKeywords)
+      .values(keywordDefaults.slice(offset, offset + 8))
+      .onConflictDoNothing({ target: [monitoredKeywords.productAsin, monitoredKeywords.keyword] });
+  }
   return db;
 }
 
 export async function GET(request: Request) {
+  try {
+    await ensureMonitoringSchema();
+  } catch (error) {
+    return Response.json({ error: errorMessage(error) }, { status: 500 });
+  }
   const user = authenticatedUser(request);
   if (!user) return Response.json({ error: "请先登录内部看板。" }, { status: 401 });
 
@@ -97,9 +134,11 @@ export async function GET(request: Request) {
       monitoredKeywords: keywordRows,
       refreshJobs: jobs,
       dailySales: salesRows,
+      salesSyncJobs: [],
       defaults: { product: DEFAULT_PRODUCT },
     });
   } catch (error) {
+    console.error("monitoring_get_failed", safeDiagnostic(error));
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
@@ -232,6 +271,14 @@ export async function POST(request: Request) {
 
     if (action === "refresh_request") {
       const productAsin = typeof payload.productAsin === "string" ? payload.productAsin.trim().toUpperCase() : DEFAULT_PRODUCT.asin;
+      await db
+        .update(refreshJobs)
+        .set({ status: "failed", message: "服务器执行器等待超时，请重新刷新。", completedAt: sql`CURRENT_TIMESTAMP` })
+        .where(and(
+          eq(refreshJobs.productAsin, productAsin),
+          inArray(refreshJobs.status, ["queued", "running"]),
+          sql`datetime(${refreshJobs.requestedAt}) < datetime('now', '-45 minutes')`,
+        ));
       const [existing] = await db
         .select()
         .from(refreshJobs)
@@ -244,7 +291,7 @@ export async function POST(request: Request) {
         .values({
           productAsin,
           status: "queued",
-          message: "刷新请求已保存；等待已授权的排名采集数据源处理。",
+          message: "已进入服务器采集队列，通常5分钟内启动；将按独立无痕会话、ZIP 90001规则处理。",
           requestedByUserId: user.id,
           requestedByEmail: user.email,
         })
@@ -270,8 +317,146 @@ export async function POST(request: Request) {
       return Response.json({ entry }, { status: 201 });
     }
 
+    if (action === "sales_sync") {
+      const salesDate = payload.salesDate;
+      const force = payload.force === true;
+      const productAsin = typeof payload.productAsin === "string" ? payload.productAsin.trim().toUpperCase() : DEFAULT_PRODUCT.asin;
+      if (!validDate(salesDate)) return Response.json({ error: "请输入有效销售日期。" }, { status: 400 });
+      if (!/^[A-Z0-9]{10}$/.test(productAsin)) return Response.json({ error: "请选择有效产品。" }, { status: 400 });
+
+      let [activeJob] = await db
+        .select()
+        .from(amazonSalesSyncJobs)
+        .where(and(
+          eq(amazonSalesSyncJobs.salesDate, salesDate),
+          eq(amazonSalesSyncJobs.productAsin, productAsin),
+          inArray(amazonSalesSyncJobs.status, ["queued", "running"]),
+        ))
+        .orderBy(desc(amazonSalesSyncJobs.requestedAt))
+        .limit(1);
+
+      if (activeJob && force) {
+        await db
+          .update(amazonSalesSyncJobs)
+          .set({
+            status: "failed",
+            message: "已由新的手动同步请求替代。",
+            checkedAt: sql`CURRENT_TIMESTAMP`,
+            completedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(eq(amazonSalesSyncJobs.id, activeJob.id));
+        activeJob = undefined;
+      }
+
+      if (!activeJob) {
+        const reportId = await createAmazonSalesReport(salesDate);
+        const [job] = await db
+          .insert(amazonSalesSyncJobs)
+          .values({
+            salesDate,
+            productAsin,
+            reportId,
+            status: "queued",
+            message: "Amazon 正在按太平洋时间生成店铺与产品销售报表。",
+            requestedByUserId: user.id,
+            requestedByEmail: user.email,
+          })
+          .returning();
+        return Response.json({ job: publicSalesSyncJob(job), phase: "queued" }, { status: 202 });
+      }
+
+      const report = await getAmazonSalesReport(activeJob.reportId);
+      if (report.processingStatus === "IN_QUEUE" || report.processingStatus === "IN_PROGRESS") {
+        const [job] = await db
+          .update(amazonSalesSyncJobs)
+          .set({ status: "running", message: "Amazon 销售报表生成中，请稍候。", checkedAt: sql`CURRENT_TIMESTAMP` })
+          .where(eq(amazonSalesSyncJobs.id, activeJob.id))
+          .returning();
+        return Response.json({ job: publicSalesSyncJob(job), phase: "running" }, { status: 202 });
+      }
+
+      if (report.processingStatus !== "DONE" || !report.reportDocumentId) {
+        await db
+          .update(amazonSalesSyncJobs)
+          .set({
+            status: "failed",
+            message: `Amazon 报表状态：${report.processingStatus}`,
+            checkedAt: sql`CURRENT_TIMESTAMP`,
+            completedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(eq(amazonSalesSyncJobs.id, activeJob.id));
+        return Response.json({ error: "Amazon 未生成可用销售报表，请稍后重试。" }, { status: 409 });
+      }
+
+      const sale = await downloadAmazonDailySales(report.reportDocumentId, productAsin, salesDate);
+      const [productEntry] = await db
+        .insert(dailySales)
+        .values({
+          salesDate: sale.salesDate,
+          productAsin: sale.productAsin,
+          units: sale.productUnits,
+          revenueCents: sale.productRevenueCents,
+          currency: sale.currency,
+          source: "amazon_sp_api",
+          updatedByUserId: user.id,
+          updatedByEmail: user.email,
+        })
+        .onConflictDoUpdate({
+          target: [dailySales.salesDate, dailySales.productAsin],
+          set: {
+            units: sale.productUnits,
+            revenueCents: sale.productRevenueCents,
+            currency: sale.currency,
+            source: "amazon_sp_api",
+            updatedByUserId: user.id,
+            updatedByEmail: user.email,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          },
+        })
+        .returning();
+
+      const [accountEntry] = await db
+        .insert(dailySales)
+        .values({
+          salesDate: sale.salesDate,
+          productAsin: AMAZON_US_ACCOUNT_SALES_KEY,
+          units: sale.accountUnits,
+          revenueCents: sale.accountRevenueCents,
+          currency: sale.currency,
+          source: "amazon_sp_api",
+          updatedByUserId: user.id,
+          updatedByEmail: user.email,
+        })
+        .onConflictDoUpdate({
+          target: [dailySales.salesDate, dailySales.productAsin],
+          set: {
+            units: sale.accountUnits,
+            revenueCents: sale.accountRevenueCents,
+            currency: sale.currency,
+            source: "amazon_sp_api",
+            updatedByUserId: user.id,
+            updatedByEmail: user.email,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          },
+        })
+        .returning();
+
+      await db
+        .update(amazonSalesSyncJobs)
+        .set({
+          status: "completed",
+          message: "店铺总额与当前产品销售额已从 Amazon 同步。",
+          checkedAt: sql`CURRENT_TIMESTAMP`,
+          completedAt: sql`CURRENT_TIMESTAMP`,
+        })
+        .where(eq(amazonSalesSyncJobs.id, activeJob.id));
+
+      return Response.json({ productEntry, accountEntry, salesDate: sale.salesDate, periodEnd: sale.periodEnd, timeZone: sale.timeZone, phase: "completed" });
+    }
+
     return Response.json({ error: "不支持的录入类型。" }, { status: 400 });
   } catch (error) {
+    console.error("monitoring_post_failed", safeDiagnostic(error));
     return Response.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
