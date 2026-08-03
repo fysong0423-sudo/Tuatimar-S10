@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import DataEntryDrawer, { type EntryMode } from "./data-entry-drawer";
+import { DEFAULT_PRODUCT } from "../lib/monitoring-config";
 
 type KeywordRow = {
   keyword: string;
@@ -10,6 +12,46 @@ type KeywordRow = {
   status: string;
   source: "保留排名词" | "图片新增词" | "优化长尾词";
 };
+
+type ManualKeywordEntry = {
+  snapshotDate: string;
+  keyword: string;
+  rank: number | null;
+  page: number | null;
+  status: string;
+  updatedByEmail: string;
+  updatedAt: string;
+};
+
+type ManualBsrEntry = {
+  snapshotDate: string;
+  asin: string;
+  bsr: number;
+  category: string;
+  zip: string;
+  updatedByEmail: string;
+  updatedAt: string;
+};
+
+type SharedProduct = {
+  name: string;
+  asin: string;
+  market: string;
+  zip: string;
+  amazonUrl: string;
+};
+
+type SharedMonitoringData = {
+  user: { email: string };
+  keywordEntries: ManualKeywordEntry[];
+  bsrEntries: ManualBsrEntry[];
+  products: SharedProduct[];
+};
+
+type NavSection = "overview" | "keyword" | "bsr" | "product";
+
+const INTERNAL_DASHBOARD_URL = "https://northstar-amazon-us.fysong0423.chatgpt.site";
+const CURRENT_SNAPSHOT_DATE = "2026-08-03";
 
 const keywordRows: KeywordRow[] = [
   { keyword: "rose toy", product: "TUATIMAR S10", rank: 21, change: 11, status: "第1页有排名", source: "保留排名词" },
@@ -116,15 +158,17 @@ function pageForRow(row: KeywordRow) {
   return match ? Number(match[1]) : null;
 }
 
-const keywordSummary = {
-  total: keywordRows.length,
-  ranked: keywordRows.filter((row) => row.rank !== null).length,
-  top10: keywordRows.filter((row) => row.rank !== null && row.rank <= 10).length,
-  rank11to48: keywordRows.filter((row) => row.rank !== null && row.rank >= 11 && row.rank <= 48).length,
-  rank49to192: keywordRows.filter((row) => row.rank !== null && row.rank >= 49 && row.rank <= 192).length,
-  rank193to288: keywordRows.filter((row) => row.rank !== null && row.rank >= 193 && row.rank <= 288).length,
-  notFound: keywordRows.filter((row) => row.rank === null).length,
-};
+function summarizeKeywords(rows: KeywordRow[]) {
+  return {
+    total: rows.length,
+    ranked: rows.filter((row) => row.rank !== null).length,
+    top10: rows.filter((row) => row.rank !== null && row.rank <= 10).length,
+    rank11to48: rows.filter((row) => row.rank !== null && row.rank >= 11 && row.rank <= 48).length,
+    rank49to192: rows.filter((row) => row.rank !== null && row.rank >= 49 && row.rank <= 192).length,
+    rank193to288: rows.filter((row) => row.rank !== null && row.rank >= 193 && row.rank <= 288).length,
+    notFound: rows.filter((row) => row.rank === null).length,
+  };
+}
 
 function ChangePill({ value, suffix = "" }: { value: number; suffix?: string }) {
   const positive = value > 0;
@@ -145,22 +189,124 @@ export default function Dashboard() {
   const [lastUpdated] = useState("2026-08-03 10:03 CST");
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
+  const [activeSection, setActiveSection] = useState<NavSection>("overview");
+  const [entryMode, setEntryMode] = useState<EntryMode | null>(null);
+  const [sharedData, setSharedData] = useState<SharedMonitoringData | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [publicCopy, setPublicCopy] = useState(false);
+
+  const reloadSharedData = useCallback(async () => {
+    if (window.location.hostname.endsWith("github.io")) {
+      setPublicCopy(true);
+      setCanEdit(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/monitoring", { headers: { accept: "application/json" } });
+      if (!response.ok) {
+        setCanEdit(false);
+        return;
+      }
+      const data = (await response.json()) as SharedMonitoringData;
+      setSharedData(data);
+      setCanEdit(true);
+
+      const requestedEntry = new URL(window.location.href).searchParams.get("entry");
+      if (requestedEntry === "keyword" || requestedEntry === "bsr" || requestedEntry === "product") {
+        setActiveSection(requestedEntry);
+        setEntryMode(requestedEntry);
+      }
+    } catch {
+      setCanEdit(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void reloadSharedData(), 0);
+    return () => window.clearTimeout(timer);
+  }, [reloadSharedData]);
+
+  const manualEntryMap = useMemo(() => {
+    return new Map(
+      (sharedData?.keywordEntries ?? []).map((entry) => [`${entry.snapshotDate}:${entry.keyword}`, entry]),
+    );
+  }, [sharedData]);
+
+  const effectiveRows = useMemo(() => {
+    return keywordRows.map((row) => {
+      const manual = manualEntryMap.get(`${CURRENT_SNAPSHOT_DATE}:${row.keyword}`);
+      if (!manual) return row;
+      const previousRank = rankHistory["2026-07-30"]?.[row.keyword] ?? null;
+      const change = manual.rank !== null && previousRank !== null ? previousRank - manual.rank : null;
+      return { ...row, rank: manual.rank, change, status: manual.status };
+    });
+  }, [manualEntryMap]);
+
+  const keywordSummary = useMemo(() => summarizeKeywords(effectiveRows), [effectiveRows]);
+  const coveragePercent = ((keywordSummary.ranked / keywordSummary.total) * 100).toFixed(1);
+  const improvedCount = effectiveRows.filter((row) => row.change !== null && row.change > 0).length;
+  const declinedCount = effectiveRows.filter((row) => row.change !== null && row.change < 0).length;
+  const stableCount = effectiveRows.filter((row) => row.change === 0).length;
+  const currentBsrEntry = sharedData?.bsrEntries.find((entry) => entry.snapshotDate === CURRENT_SNAPSHOT_DATE);
+  const currentBsr = currentBsrEntry?.bsr ?? 123;
+  const currentBsrCategory = currentBsrEntry?.category ?? "Clitoral Vibrators";
+  const currentBsrZip = currentBsrEntry?.zip ?? "90001";
+  const currentProduct = sharedData?.products[0] ?? DEFAULT_PRODUCT;
+  const bsrDelta = currentBsr - 113;
+  const bsrChangeText = bsrDelta === 0 ? "与上一有效日持平" : `较上一有效日${bsrDelta > 0 ? "下降" : "上升"} ${Math.abs(bsrDelta)} 位`;
+
+  function displayRankForDate(row: KeywordRow, date: string) {
+    const manual = manualEntryMap.get(`${date}:${row.keyword}`);
+    return manual ? manual.rank : rankForDate(row, date);
+  }
 
   const filteredRows = useMemo(() => {
-    return keywordRows.filter((row) => {
+    return effectiveRows.filter((row) => {
       const matchesProduct = product === "全部产品" || row.product === product;
       const matchesQuery = row.keyword.toLowerCase().includes(query.toLowerCase());
       const matchesDown = !onlyDown || (row.change !== null && row.change < 0);
       return matchesProduct && matchesQuery && matchesDown;
     });
-  }, [product, query, onlyDown]);
+  }, [effectiveRows, product, query, onlyDown]);
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 3000);
+  }
+
+  function navigateTo(section: NavSection) {
+    setActiveSection(section);
+    const targetId = {
+      overview: "overview-section",
+      keyword: "keyword-section",
+      bsr: "bsr-section",
+      product: "product-section",
+    }[section];
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    if (section === "overview") return;
+    if (canEdit) {
+      setEntryMode(section);
+      return;
+    }
+    if (publicCopy) {
+      window.location.href = `${INTERNAL_DASHBOARD_URL}/?entry=${section}`;
+      return;
+    }
+    showToast("正在连接团队共享数据库，请稍后再试");
+  }
+
+  async function handleSaved(message: string) {
+    await reloadSharedData();
+    showToast(message);
+  }
 
   function syncNow() {
     setSyncing(true);
     window.setTimeout(() => {
       setSyncing(false);
-      setToast("当前页面已是最新采集快照");
-      window.setTimeout(() => setToast(""), 2600);
+      showToast("当前页面已是最新采集快照");
     }, 900);
   }
 
@@ -168,7 +314,7 @@ export default function Dashboard() {
     const header = ["关键词", ...rankingDates.map((date) => `${date.key}自然排名`), "页数", "日变化", "状态"];
     const lines = filteredRows.map((row) => [
       row.keyword,
-      ...rankingDates.map((date) => rankForDate(row, date.key) ?? ""),
+      ...rankingDates.map((date) => displayRankForDate(row, date.key) ?? ""),
       pageForRow(row) ?? "",
       row.change,
       row.status,
@@ -181,8 +327,7 @@ export default function Dashboard() {
     link.download = "amazon-us-keyword-ranking.csv";
     link.click();
     URL.revokeObjectURL(url);
-    setToast("关键词报表已导出");
-    window.setTimeout(() => setToast(""), 2600);
+    showToast("关键词报表已导出");
   }
 
   return (
@@ -195,23 +340,23 @@ export default function Dashboard() {
 
         <div className="workspace-label">运营工作台</div>
         <nav className="nav-list" aria-label="主导航">
-          <button className="nav-item active"><span>⌁</span>每日概览</button>
-          <button className="nav-item"><span>⌕</span>关键词监控</button>
-          <button className="nav-item"><span>↗</span>BSR 趋势</button>
-          <button className="nav-item"><span>□</span>产品管理</button>
+          <button type="button" className={`nav-item ${activeSection === "overview" ? "active" : ""}`} onClick={() => navigateTo("overview")} aria-current={activeSection === "overview" ? "page" : undefined}><span>⌁</span>每日概览</button>
+          <button type="button" className={`nav-item ${activeSection === "keyword" ? "active" : ""}`} onClick={() => navigateTo("keyword")}><span>⌕</span>关键词监控</button>
+          <button type="button" className={`nav-item ${activeSection === "bsr" ? "active" : ""}`} onClick={() => navigateTo("bsr")}><span>↗</span>BSR 趋势</button>
+          <button type="button" className={`nav-item ${activeSection === "product" ? "active" : ""}`} onClick={() => navigateTo("product")}><span>□</span>产品管理</button>
         </nav>
 
         <div className="sidebar-spacer" />
         <div className="sync-card">
           <div className="sync-card-head">
             <span className="live-dot" />
-            Amazon 排名已同步
+            {canEdit ? "共享录入已连接" : "Amazon 排名已同步"}
           </div>
-          <p>BSR 与 25 个关键词已深度更新</p>
+          <p>{canEdit ? `当前账号：${sharedData?.user.email ?? "已登录"}` : publicCopy ? "公开看板为只读，点击栏目进入内部录入" : "BSR 与 25 个关键词已深度更新"}</p>
           <div className="sync-track"><span style={{ width: "100%" }} /></div>
           <small>独立无痕会话 · ZIP 90001</small>
         </div>
-        <button className="nav-item settings"><span>⚙</span>数据源设置</button>
+        <button type="button" className="nav-item settings" onClick={() => navigateTo("product")}><span>⚙</span>数据源设置</button>
         <div className="user-card">
           <div className="avatar">YS</div>
           <div><strong>运营团队</strong><small>Amazon US</small></div>
@@ -219,12 +364,12 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      <section className="content">
+      <section className="content" id="overview-section">
         <header className="topbar">
           <div>
             <p className="eyebrow">AMAZON US · 每日监控</p>
-            <h1>TUATIMAR S10 今日排名已自动更新。</h1>
-            <p className="subhead">ASIN B0GGTPHQZK · 25 个固定监控词 · 独立无痕采集至第 6 页 · 自然排名保留最近 7 天。</p>
+            <h1>{currentProduct.name} 今日排名已自动更新。</h1>
+            <p className="subhead">ASIN {currentProduct.asin} · 25 个固定监控词 · 独立无痕采集至第 6 页 · 自然排名保留最近 7 天。</p>
           </div>
           <div className="top-actions">
             <div className="updated"><span className="live-dot" />数据快照：{lastUpdated}</div>
@@ -235,12 +380,12 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="control-strip">
+        <div className="control-strip section-anchor" id="product-section">
           <div className="select-wrap">
             <label htmlFor="product">产品</label>
             <select id="product" value={product} onChange={(event) => setProduct(event.target.value)}>
               <option>全部产品</option>
-              <option>TUATIMAR S10</option>
+              <option value="TUATIMAR S10">{currentProduct.name}</option>
             </select>
           </div>
           <div className="select-wrap">
@@ -256,7 +401,8 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <a className="product-link" href="https://www.amazon.com/dp/B0GGTPHQZK" target="_blank" rel="noreferrer">
+          <button type="button" className="entry-launch compact" onClick={() => navigateTo("product")}>录入产品资料</button>
+          <a className="product-link" href={currentProduct.amazonUrl} target="_blank" rel="noreferrer">
             查看 Amazon 商品页 ↗
           </a>
         </div>
@@ -267,16 +413,16 @@ export default function Dashboard() {
             <div><p>90001 地区数据已采集</p><strong>2026-08-03 10:03 CST</strong></div>
           </div>
           <div className="snapshot-stat">
-            <small>BSR</small><strong>#123</strong><span>Clitoral Vibrators · 较上一有效日下降 10 位</span>
+            <small>BSR</small><strong>#{currentBsr}</strong><span>{currentBsrCategory} · {bsrChangeText}</span>
           </div>
           <div className="snapshot-stat">
             <small>月度购买信号</small><strong>50+</strong><span>bought in past month</span>
           </div>
           <div className="snapshot-stat">
-            <small>采集地区</small><strong>90001</strong><span>Los Angeles · Amazon US</span>
+            <small>采集地区</small><strong>{currentBsrZip}</strong><span>Los Angeles · {currentProduct.market}</span>
           </div>
           <div className="snapshot-stat">
-            <small>前 6 页有自然排名</small><strong>20 / 25</strong><span>今日覆盖率 80.0%</span>
+            <small>前 6 页有自然排名</small><strong>{keywordSummary.ranked} / {keywordSummary.total}</strong><span>今日覆盖率 {coveragePercent}%</span>
           </div>
         </section>
 
@@ -295,7 +441,7 @@ export default function Dashboard() {
             <div className="kpi-top"><span className="kpi-icon mint">P6</span><span className="source-pill">前 6 页</span></div>
             <div className="kpi-label">有自然排名</div>
             <div className="kpi-value">{keywordSummary.ranked}</div>
-            <p>占总词数 80.0%</p>
+            <p>占总词数 {coveragePercent}%</p>
           </article>
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon peach">T10</span><span className="source-pill">自然位</span></div>
@@ -307,13 +453,13 @@ export default function Dashboard() {
             <div className="kpi-top"><span className="kpi-icon blue">11</span><span className="source-pill">自然位</span></div>
             <div className="kpi-label">第 11–48 位</div>
             <div className="kpi-value">{keywordSummary.rank11to48}</div>
-            <p>7 个词进入搜索首页</p>
+            <p>{keywordSummary.rank11to48} 个词进入搜索首页</p>
           </article>
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon blue">49</span><span className="source-pill">第 2–4 页</span></div>
             <div className="kpi-label">第 49–288 位</div>
             <div className="kpi-value">{keywordSummary.rank49to192 + keywordSummary.rank193to288}</div>
-            <p>第 2–6 页共 13 个词</p>
+            <p>第 2–6 页共 {keywordSummary.rank49to192 + keywordSummary.rank193to288} 个词</p>
           </article>
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon gray">—</span><span className="waiting-pill">前 6 页</span></div>
@@ -324,8 +470,8 @@ export default function Dashboard() {
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon blue">#</span><span className="source-pill">Product details</span></div>
             <div className="kpi-label">Best Seller Rank</div>
-            <div className="kpi-value">#123</div>
-            <p>较上一有效日 #113 下降 10 位</p>
+            <div className="kpi-value">#{currentBsr}</div>
+            <p>{bsrChangeText}</p>
           </article>
         </section>
 
@@ -333,12 +479,12 @@ export default function Dashboard() {
           <article className="panel visibility-panel">
             <div className="panel-head">
               <div><p className="panel-kicker">关键词可见度</p><h2>自然搜索覆盖趋势</h2></div>
-              <div className="metric-inline"><strong>80.0%</strong><span className="source-pill">持平 0.0%</span></div>
+              <div className="metric-inline"><strong>{coveragePercent}%</strong><span className="source-pill">共享数据</span></div>
             </div>
             <div className="waiting-chart">
               <div className="waiting-chart-mark">✓</div>
               <strong>今日关键词排名已完成</strong>
-              <p>前 6 页可见 20 / 25 个词；4 个词上升、15 个词下降、1 个持平。</p>
+              <p>前 6 页可见 {keywordSummary.ranked} / {keywordSummary.total} 个词；{improvedCount} 个词上升、{declinedCount} 个词下降、{stableCount} 个持平。</p>
             </div>
             <div className="chart-legend">
               <span><i className="legend-line orange" />自然可见度</span>
@@ -346,21 +492,24 @@ export default function Dashboard() {
             </div>
           </article>
 
-          <article className="panel bsr-panel">
+          <article className="panel bsr-panel section-anchor" id="bsr-section">
             <div className="panel-head">
               <div><p className="panel-kicker">BSR 日变化</p><h2>类目排名趋势</h2></div>
-              <div className="metric-inline align-right"><strong>#123</strong><span className="source-pill">ZIP 90001</span></div>
+              <div className="panel-actions">
+                <button type="button" className="entry-launch" onClick={() => navigateTo("bsr")}>录入 BSR</button>
+                <div className="metric-inline align-right"><strong>#{currentBsr}</strong><span className="source-pill">ZIP {currentBsrZip}</span></div>
+              </div>
             </div>
             <div className="snapshot-box">
-              <span>今日商品详情已核验</span>
-              <strong>#123</strong>
-              <small>Clitoral Vibrators</small>
-              <a href="https://www.amazon.com/dp/B0GGTPHQZK" target="_blank" rel="noreferrer">查看来源 ↗</a>
+              <span>{currentBsrEntry ? "团队人工修正值" : "今日商品详情已核验"}</span>
+              <strong>#{currentBsr}</strong>
+              <small>{currentBsrCategory}</small>
+              <a href={currentProduct.amazonUrl} target="_blank" rel="noreferrer">查看来源 ↗</a>
             </div>
             <div className="bsr-summary">
-              <div><small>当前排名</small><strong>#123</strong></div>
+              <div><small>当前排名</small><strong>#{currentBsr}</strong></div>
               <div><small>上一有效日</small><strong>#113</strong></div>
-              <div><small>变化</small><strong className="bad">↓ 10</strong></div>
+              <div><small>变化</small><strong className={bsrDelta > 0 ? "bad" : "good"}>{bsrDelta === 0 ? "— 0" : `${bsrDelta > 0 ? "↓" : "↑"} ${Math.abs(bsrDelta)}`}</strong></div>
             </div>
           </article>
 
@@ -371,12 +520,11 @@ export default function Dashboard() {
             </div>
             <div className="distribution-list">
               {[
-                ["Top 10", 0, 0, "coral"],
-                ["11 – 48", 7, 28, "orange"],
-                ["49 – 96", 6, 24, "blue"],
-                ["97 – 192", 5, 20, "slate"],
-                ["193 – 288", 2, 8, "slate"],
-                ["前6页未找到", 5, 20, "gray"],
+                ["Top 10", keywordSummary.top10, Math.round(keywordSummary.top10 / keywordSummary.total * 100), "coral"],
+                ["11 – 48", keywordSummary.rank11to48, Math.round(keywordSummary.rank11to48 / keywordSummary.total * 100), "orange"],
+                ["49 – 192", keywordSummary.rank49to192, Math.round(keywordSummary.rank49to192 / keywordSummary.total * 100), "blue"],
+                ["193 – 288", keywordSummary.rank193to288, Math.round(keywordSummary.rank193to288 / keywordSummary.total * 100), "slate"],
+                ["前6页未找到", keywordSummary.notFound, Math.round(keywordSummary.notFound / keywordSummary.total * 100), "gray"],
               ].map(([label, value, percent, tone]) => (
                 <div className="distribution-row" key={label}>
                   <span>{label}</span>
@@ -389,12 +537,13 @@ export default function Dashboard() {
           </article>
         </section>
 
-        <section className="panel keyword-panel">
+        <section className="panel keyword-panel section-anchor" id="keyword-section">
           <div className="panel-head keyword-head">
             <div><p className="panel-kicker">关键词明细</p><h2>25 个监控词 · 近 7 天自然排名</h2></div>
             <div className="table-actions">
               <div className="search-box"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索关键词" aria-label="搜索关键词" /></div>
               <button className={`filter-btn ${onlyDown ? "selected" : ""}`} onClick={() => setOnlyDown(!onlyDown)}>↓ 仅看下滑</button>
+              <button type="button" className="entry-launch" onClick={() => navigateTo("keyword")}>＋ 录入排名</button>
             </div>
           </div>
           <div className="table-wrap">
@@ -416,9 +565,9 @@ export default function Dashboard() {
               <tbody>
                 {filteredRows.map((row) => (
                   <tr key={`${row.keyword}-${row.product}`}>
-                    <td className="keyword-column"><strong>{row.keyword}</strong></td>
+                    <td className="keyword-column"><strong>{row.keyword}</strong>{manualEntryMap.has(`${CURRENT_SNAPSHOT_DATE}:${row.keyword}`) && <span className="manual-pill">人工</span>}</td>
                     {rankingDates.map((date, index) => {
-                      const rank = rankForDate(row, date.key);
+                      const rank = displayRankForDate(row, date.key);
                       return (
                         <td key={date.key} className={index === rankingDates.length - 1 ? "today-column" : ""}>
                           <span className={`rank-number ${rank !== null && rank <= 10 ? "top" : ""}`}>{rank === null ? "—" : `#${rank}`}</span>
@@ -442,6 +591,14 @@ export default function Dashboard() {
           <span>每日 09:00（北京时间）自动同步 · 最深检查至第 6 页</span>
         </footer>
       </section>
+      <DataEntryDrawer
+        key={entryMode ?? "closed"}
+        mode={entryMode}
+        defaultDate={CURRENT_SNAPSHOT_DATE}
+        product={currentProduct}
+        onClose={() => setEntryMode(null)}
+        onSaved={handleSaved}
+      />
       {toast && <div className="toast"><span>✓</span>{toast}</div>}
     </main>
   );
