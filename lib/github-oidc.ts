@@ -84,7 +84,7 @@ export async function authenticateCollector(request: Request) {
     if (claims.repository?.toLowerCase() !== COLLECTOR_REPOSITORY.toLowerCase()) return null;
     if (String(claims.repository_id) !== COLLECTOR_REPOSITORY_ID) return null;
     if (claims.ref !== COLLECTOR_REF || claims.workflow_ref !== COLLECTOR_WORKFLOW_REF) return null;
-    if (!claims.event_name || !["schedule", "workflow_dispatch"].includes(claims.event_name)) return null;
+    if (!claims.event_name || !["schedule", "workflow_dispatch", "push"].includes(claims.event_name)) return null;
     if (claims.runner_environment !== "github-hosted") return null;
     return claims;
   } catch {
