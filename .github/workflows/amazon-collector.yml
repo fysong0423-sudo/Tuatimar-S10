@@ -1,0 +1,50 @@
+name: Amazon ranking collector
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: amazon-ranking-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out collector
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Claim queued job
+        id: queue
+        env:
+          COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
+        run: node scripts/run-amazon-collector.mjs --claim-only
+
+      - name: Install browser driver
+        if: steps.queue.outputs.has_job == 'true'
+        run: npm install --no-save --ignore-scripts --package-lock=false puppeteer-core@24.16.0
+
+      - name: Collect BSR and keyword ranks
+        if: steps.queue.outputs.has_job == 'true'
+        env:
+          COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node scripts/run-amazon-collector.mjs --execute
+
+      - name: Mark startup failure
+        if: failure() && steps.queue.outputs.has_job == 'true'
+        env:
+          COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
+        run: node scripts/run-amazon-collector.mjs --fail-claimed
