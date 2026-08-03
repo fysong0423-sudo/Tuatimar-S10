@@ -87,9 +87,16 @@ async function prepareContext(browser) {
 
 async function setAndVerifyZip(page, zip) {
   await page.goto("https://www.amazon.com/", { waitUntil: "domcontentloaded" });
-  let response = null;
+  const initialPage = await page.evaluate(() => ({
+    title: document.title,
+    body: document.body?.innerText?.slice(0, 4000) || "",
+  }));
+  const initialBlock = detectBlockedPage(initialPage.title, initialPage.body);
+  if (initialBlock) return { verified: false, reason: initialBlock };
+
+  let responseStatus = "未返回";
   try {
-    response = await page.evaluate(async (targetZip) => {
+    const response = await page.evaluate(async (targetZip) => {
       const body = new URLSearchParams({
         locationType: "LOCATION_INPUT",
         zipCode: targetZip,
@@ -103,21 +110,58 @@ async function setAndVerifyZip(page, zip) {
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
         body,
       });
-      return { ok: result.ok, text: await result.text() };
+      return { ok: result.ok, status: result.status };
     }, zip);
+    responseStatus = `${response.status}${response.ok ? "" : "（失败）"}`;
   } catch {
-    response = null;
+    responseStatus = "请求异常";
   }
-  if (!response?.ok || !new RegExp(`\"zipCode\"\\s*:\\s*\"${zip}\"`).test(response.text)) return false;
+
   await page.goto("https://www.amazon.com/?ref_=nav_ya_signin", { waitUntil: "domcontentloaded" });
-  const visibleZip = await page.$eval("#glow-ingress-line2", (element) => element.textContent || "").catch(() => "");
-  return new RegExp(`\\b${zip}(?:-\\d{4})?\\b`).test(visibleZip);
+  let pageData = await page.evaluate(() => ({
+    title: document.title,
+    body: document.body?.innerText?.slice(0, 4000) || "",
+    visibleZip: document.querySelector("#glow-ingress-line2")?.textContent?.trim() || "",
+  }));
+  let blocked = detectBlockedPage(pageData.title, pageData.body);
+  if (blocked) return { verified: false, reason: blocked };
+  if (new RegExp(`\\b${zip}(?:-\\d{4})?\\b`).test(pageData.visibleZip)) return { verified: true };
+
+  // Amazon occasionally changes the address AJAX response while still accepting
+  // the ZIP. Fall back to the visible delivery-location dialog and verify the
+  // value rendered by Amazon instead of trusting an undocumented response body.
+  try {
+    await page.click("#nav-global-location-popover-link");
+    await page.waitForSelector("#GLUXZipUpdateInput", { visible: true, timeout: 10_000 });
+    await page.click("#GLUXZipUpdateInput", { clickCount: 3 });
+    await page.type("#GLUXZipUpdateInput", zip, { delay: 25 });
+    await page.click("#GLUXZipUpdate");
+    await page.waitForTimeout(1_200);
+    const doneButton = await page.$("#GLUXConfirmClose");
+    if (doneButton) await doneButton.click().catch(() => {});
+  } catch {
+    // The final page verification below is authoritative and supplies the
+    // diagnostic reason if the dialog is unavailable.
+  }
+
+  await page.goto("https://www.amazon.com/?ref_=nav_ya_signin", { waitUntil: "domcontentloaded" });
+  pageData = await page.evaluate(() => ({
+    title: document.title,
+    body: document.body?.innerText?.slice(0, 4000) || "",
+    visibleZip: document.querySelector("#glow-ingress-line2")?.textContent?.trim() || "",
+  }));
+  blocked = detectBlockedPage(pageData.title, pageData.body);
+  if (blocked) return { verified: false, reason: blocked };
+  if (new RegExp(`\\b${zip}(?:-\\d{4})?\\b`).test(pageData.visibleZip)) return { verified: true };
+  const displayed = pageData.visibleZip.replace(/\\s+/g, " ").slice(0, 60) || "未显示地区";
+  return { verified: false, reason: `90001校验失败（接口${responseStatus}，页面：${displayed}）` };
 }
 
 async function collectBsr(browser, job) {
   const { context, page } = await prepareContext(browser);
   try {
-    if (!(await setAndVerifyZip(page, job.zip))) return { verified: false, reason: "页面未明确显示90001" };
+    const zipCheck = await setAndVerifyZip(page, job.zip);
+    if (!zipCheck.verified) return { verified: false, reason: zipCheck.reason };
     await page.goto(`${job.amazonUrl}${job.amazonUrl.includes("?") ? "&" : "?"}th=1&psc=1`, { waitUntil: "domcontentloaded" });
     const pageData = await page.evaluate(() => ({
       title: document.title,
@@ -148,7 +192,8 @@ async function collectBsr(browser, job) {
 async function collectKeyword(browser, job, keyword) {
   const { context, page } = await prepareContext(browser);
   try {
-    if (!(await setAndVerifyZip(page, job.zip))) return { keyword, state: "failed", reason: "页面未明确显示90001" };
+    const zipCheck = await setAndVerifyZip(page, job.zip);
+    if (!zipCheck.verified) return { keyword, state: "failed", reason: zipCheck.reason };
     let cumulativeOrganic = 0;
     for (let pageNumber = 1; pageNumber <= MAX_PAGES; pageNumber += 1) {
       const searchUrl = new URL("https://www.amazon.com/s");
@@ -195,10 +240,16 @@ async function executeClaimedJob() {
   const keywordResults = [];
   try {
     bsr = await collectBsr(browser, job);
+    console.log(bsr.verified ? `BSR #${bsr.value} (${bsr.category})` : `BSR failed: ${bsr.reason}`);
     completed += 1;
     await collectorApi({ action: "progress", jobId: job.id, completed, total, message: bsr.verified ? `BSR #${bsr.value}` : `BSR失败：${bsr.reason}` });
     for (const keyword of job.keywords) {
       const result = await collectKeyword(browser, job, keyword);
+      console.log(result.state === "ranked"
+        ? `${keyword}: organic #${result.rank}, page ${result.page}`
+        : result.state === "not_found"
+          ? `${keyword}: not found in first 6 pages`
+          : `${keyword}: failed - ${result.reason}`);
       keywordResults.push(result);
       completed += 1;
       const detail = result.state === "ranked" ? `${keyword} #${result.rank}` : result.state === "not_found" ? `${keyword} 前6页未找到` : `${keyword} 失败`;
