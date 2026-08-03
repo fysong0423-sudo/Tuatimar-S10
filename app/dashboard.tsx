@@ -12,44 +12,45 @@ type KeywordRow = {
 };
 
 const keywordRows: KeywordRow[] = [
-  { keyword: "rose toy", product: "TUATIMAR S10", rank: 32, change: -2, status: "第1页有排名", source: "保留排名词" },
-  { keyword: "rose sex toy", product: "TUATIMAR S10", rank: 66, change: 4, status: "第2页有排名", source: "保留排名词" },
-  { keyword: "tongue licking vibrator", product: "TUATIMAR S10", rank: 73, change: -1, status: "第2页有排名", source: "保留排名词" },
+  { keyword: "rose toy", product: "TUATIMAR S10", rank: 21, change: 11, status: "第1页有排名", source: "保留排名词" },
+  { keyword: "rose sex toy", product: "TUATIMAR S10", rank: 259, change: -193, status: "第6页有排名", source: "保留排名词" },
+  { keyword: "tongue licking vibrator", product: "TUATIMAR S10", rank: 91, change: -18, status: "第2页有排名", source: "保留排名词" },
   { keyword: "clitoral suction vibrator", product: "TUATIMAR S10", rank: null, change: null, status: "前6页未找到", source: "保留排名词" },
-  { keyword: "sexual wellness vibrator", product: "TUATIMAR S10", rank: 192, change: -5, status: "第4页有排名", source: "保留排名词" },
-  { keyword: "tongue toy for women", product: "TUATIMAR S10", rank: 99, change: -8, status: "第3页有排名", source: "图片新增词" },
-  { keyword: "tongue vibrator", product: "TUATIMAR S10", rank: 149, change: 7, status: "第4页有排名", source: "图片新增词" },
-  { keyword: "rose adult toy", product: "TUATIMAR S10", rank: 20, change: 0, status: "第1页有排名", source: "图片新增词" },
+  { keyword: "sexual wellness vibrator", product: "TUATIMAR S10", rank: 186, change: 6, status: "第4页有排名", source: "保留排名词" },
+  { keyword: "tongue toy for women", product: "TUATIMAR S10", rank: 113, change: -14, status: "第3页有排名", source: "图片新增词" },
+  { keyword: "tongue vibrator", product: "TUATIMAR S10", rank: 187, change: -38, status: "第4页有排名", source: "图片新增词" },
+  { keyword: "rose adult toy", product: "TUATIMAR S10", rank: 19, change: 1, status: "第1页有排名", source: "图片新增词" },
   { keyword: "sucking vibrator", product: "TUATIMAR S10", rank: null, change: null, status: "前6页未找到", source: "图片新增词" },
-  { keyword: "vibrator rose", product: "TUATIMAR S10", rank: 66, change: 5, status: "第2页有排名", source: "图片新增词" },
-  { keyword: "tongue sex toy", product: "TUATIMAR S10", rank: 95, change: -7, status: "第2页有排名", source: "图片新增词" },
+  { keyword: "vibrator rose", product: "TUATIMAR S10", rank: 252, change: -186, status: "第6页有排名", source: "图片新增词" },
+  { keyword: "tongue sex toy", product: "TUATIMAR S10", rank: 139, change: -44, status: "第3页有排名", source: "图片新增词" },
   { keyword: "sex rose", product: "TUATIMAR S10", rank: 18, change: 0, status: "第1页有排名", source: "图片新增词" },
-  { keyword: "rose sex toys", product: "TUATIMAR S10", rank: 52, change: 18, status: "第2页有排名", source: "图片新增词" },
-  { keyword: "adult toy rose", product: "TUATIMAR S10", rank: 13, change: 1, status: "第1页有排名", source: "图片新增词" },
-  { keyword: "rose sex", product: "TUATIMAR S10", rank: 23, change: 2, status: "第1页有排名", source: "图片新增词" },
-  { keyword: "tongue vibrator for women", product: "TUATIMAR S10", rank: 82, change: -7, status: "第2页有排名", source: "优化长尾词" },
-  { keyword: "tongue licking toy for women", product: "TUATIMAR S10", rank: 50, change: 0, status: "第2页有排名", source: "优化长尾词" },
-  { keyword: "rose tongue vibrator", product: "TUATIMAR S10", rank: 17, change: 1, status: "第1页有排名", source: "优化长尾词" },
-  { keyword: "rose tongue toy", product: "TUATIMAR S10", rank: 25, change: -1, status: "第1页有排名", source: "优化长尾词" },
-  { keyword: "licking vibrator for women", product: "TUATIMAR S10", rank: 45, change: 9, status: "第1页有排名", source: "优化长尾词" },
+  { keyword: "rose sex toys", product: "TUATIMAR S10", rank: 63, change: -11, status: "第2页有排名", source: "图片新增词" },
+  { keyword: "adult toy rose", product: "TUATIMAR S10", rank: 15, change: -2, status: "第1页有排名", source: "图片新增词" },
+  { keyword: "rose sex", product: "TUATIMAR S10", rank: 26, change: -3, status: "第1页有排名", source: "图片新增词" },
+  { keyword: "tongue vibrator for women", product: "TUATIMAR S10", rank: 108, change: -26, status: "第3页有排名", source: "优化长尾词" },
+  { keyword: "tongue licking toy for women", product: "TUATIMAR S10", rank: 64, change: -14, status: "第2页有排名", source: "优化长尾词" },
+  { keyword: "rose tongue vibrator", product: "TUATIMAR S10", rank: 14, change: 3, status: "第1页有排名", source: "优化长尾词" },
+  { keyword: "rose tongue toy", product: "TUATIMAR S10", rank: 30, change: -5, status: "第1页有排名", source: "优化长尾词" },
+  { keyword: "licking vibrator for women", product: "TUATIMAR S10", rank: 83, change: -38, status: "第2页有排名", source: "优化长尾词" },
   { keyword: "oral tongue vibrator", product: "TUATIMAR S10", rank: null, change: null, status: "前6页未找到", source: "优化长尾词" },
   { keyword: "rose vibrator for women", product: "TUATIMAR S10", rank: null, change: null, status: "前6页未找到", source: "优化长尾词" },
-  { keyword: "clitoral tongue vibrator", product: "TUATIMAR S10", rank: 68, change: 6, status: "第2页有排名", source: "优化长尾词" },
+  { keyword: "clitoral tongue vibrator", product: "TUATIMAR S10", rank: 85, change: -17, status: "第2页有排名", source: "优化长尾词" },
   { keyword: "tongue massager for women", product: "TUATIMAR S10", rank: null, change: null, status: "前6页未找到", source: "优化长尾词" },
-  { keyword: "rose clitoral toy", product: "TUATIMAR S10", rank: 37, change: -2, status: "第1页有排名", source: "优化长尾词" },
+  { keyword: "rose clitoral toy", product: "TUATIMAR S10", rank: 64, change: -27, status: "第2页有排名", source: "优化长尾词" },
 ];
 
 const rankingDates = [
-  { key: "2026-07-24", label: "07/24" },
-  { key: "2026-07-25", label: "07/25" },
-  { key: "2026-07-26", label: "07/26" },
-  { key: "2026-07-27", label: "07/27" },
   { key: "2026-07-28", label: "07/28" },
   { key: "2026-07-29", label: "07/29" },
   { key: "2026-07-30", label: "07/30" },
+  { key: "2026-07-31", label: "07/31" },
+  { key: "2026-08-01", label: "08/01" },
+  { key: "2026-08-02", label: "08/02" },
+  { key: "2026-08-03", label: "08/03" },
 ] as const;
 
-const previousRanks: Record<string, number | null> = {
+const rankHistory: Record<string, Record<string, number | null>> = {
+  "2026-07-29": {
   "rose toy": 30,
   "rose sex toy": 70,
   "tongue licking vibrator": 72,
@@ -75,12 +76,39 @@ const previousRanks: Record<string, number | null> = {
   "clitoral tongue vibrator": 74,
   "tongue massager for women": null,
   "rose clitoral toy": 35,
+  },
+  "2026-07-30": {
+    "rose toy": 32,
+    "rose sex toy": 66,
+    "tongue licking vibrator": 73,
+    "clitoral suction vibrator": null,
+    "sexual wellness vibrator": 192,
+    "tongue toy for women": 99,
+    "tongue vibrator": 149,
+    "rose adult toy": 20,
+    "sucking vibrator": null,
+    "vibrator rose": 66,
+    "tongue sex toy": 95,
+    "sex rose": 18,
+    "rose sex toys": 52,
+    "adult toy rose": 13,
+    "rose sex": 23,
+    "tongue vibrator for women": 82,
+    "tongue licking toy for women": 50,
+    "rose tongue vibrator": 17,
+    "rose tongue toy": 25,
+    "licking vibrator for women": 45,
+    "oral tongue vibrator": null,
+    "rose vibrator for women": null,
+    "clitoral tongue vibrator": 68,
+    "tongue massager for women": null,
+    "rose clitoral toy": 37,
+  },
 };
 
 function rankForDate(row: KeywordRow, date: string) {
-  if (date === "2026-07-30") return row.rank;
-  if (date === "2026-07-29") return previousRanks[row.keyword] ?? null;
-  return null;
+  if (date === "2026-08-03") return row.rank;
+  return rankHistory[date]?.[row.keyword] ?? null;
 }
 
 function pageForRow(row: KeywordRow) {
@@ -94,6 +122,7 @@ const keywordSummary = {
   top10: keywordRows.filter((row) => row.rank !== null && row.rank <= 10).length,
   rank11to48: keywordRows.filter((row) => row.rank !== null && row.rank >= 11 && row.rank <= 48).length,
   rank49to192: keywordRows.filter((row) => row.rank !== null && row.rank >= 49 && row.rank <= 192).length,
+  rank193to288: keywordRows.filter((row) => row.rank !== null && row.rank >= 193 && row.rank <= 288).length,
   notFound: keywordRows.filter((row) => row.rank === null).length,
 };
 
@@ -113,7 +142,7 @@ export default function Dashboard() {
   const [product, setProduct] = useState("全部产品");
   const [query, setQuery] = useState("");
   const [onlyDown, setOnlyDown] = useState(false);
-  const [lastUpdated] = useState("2026-07-30 09:17 CST");
+  const [lastUpdated] = useState("2026-08-03 10:03 CST");
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -235,10 +264,10 @@ export default function Dashboard() {
         <section className="today-snapshot" aria-label="今日采集结果">
           <div className="snapshot-lead">
             <span className="snapshot-check">✓</span>
-            <div><p>90001 地区数据已采集</p><strong>2026-07-30 09:17 CST</strong></div>
+            <div><p>90001 地区数据已采集</p><strong>2026-08-03 10:03 CST</strong></div>
           </div>
           <div className="snapshot-stat">
-            <small>BSR</small><strong>#113</strong><span>Clitoral Vibrators · 日降 8 位</span>
+            <small>BSR</small><strong>#123</strong><span>Clitoral Vibrators · 较上一有效日下降 10 位</span>
           </div>
           <div className="snapshot-stat">
             <small>月度购买信号</small><strong>50+</strong><span>bought in past month</span>
@@ -278,13 +307,13 @@ export default function Dashboard() {
             <div className="kpi-top"><span className="kpi-icon blue">11</span><span className="source-pill">自然位</span></div>
             <div className="kpi-label">第 11–48 位</div>
             <div className="kpi-value">{keywordSummary.rank11to48}</div>
-            <p>9 个词进入搜索首页</p>
+            <p>7 个词进入搜索首页</p>
           </article>
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon blue">49</span><span className="source-pill">第 2–4 页</span></div>
-            <div className="kpi-label">第 49–192 位</div>
-            <div className="kpi-value">{keywordSummary.rank49to192}</div>
-            <p>第 2–4 页共 11 个词</p>
+            <div className="kpi-label">第 49–288 位</div>
+            <div className="kpi-value">{keywordSummary.rank49to192 + keywordSummary.rank193to288}</div>
+            <p>第 2–6 页共 13 个词</p>
           </article>
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon gray">—</span><span className="waiting-pill">前 6 页</span></div>
@@ -295,8 +324,8 @@ export default function Dashboard() {
           <article className="kpi-card">
             <div className="kpi-top"><span className="kpi-icon blue">#</span><span className="source-pill">Product details</span></div>
             <div className="kpi-label">Best Seller Rank</div>
-            <div className="kpi-value">#113</div>
-            <p>较昨日 #105 下降 8 位</p>
+            <div className="kpi-value">#123</div>
+            <p>较上一有效日 #113 下降 10 位</p>
           </article>
         </section>
 
@@ -304,12 +333,12 @@ export default function Dashboard() {
           <article className="panel visibility-panel">
             <div className="panel-head">
               <div><p className="panel-kicker">关键词可见度</p><h2>自然搜索覆盖趋势</h2></div>
-              <div className="metric-inline"><strong>80.0%</strong><span className="waiting-pill">日降 4.0%</span></div>
+              <div className="metric-inline"><strong>80.0%</strong><span className="source-pill">持平 0.0%</span></div>
             </div>
             <div className="waiting-chart">
               <div className="waiting-chart-mark">✓</div>
               <strong>今日关键词排名已完成</strong>
-              <p>前 6 页可见 20 / 25 个词；9 个词上升、8 个词下降。</p>
+              <p>前 6 页可见 20 / 25 个词；4 个词上升、15 个词下降、1 个持平。</p>
             </div>
             <div className="chart-legend">
               <span><i className="legend-line orange" />自然可见度</span>
@@ -320,18 +349,18 @@ export default function Dashboard() {
           <article className="panel bsr-panel">
             <div className="panel-head">
               <div><p className="panel-kicker">BSR 日变化</p><h2>类目排名趋势</h2></div>
-              <div className="metric-inline align-right"><strong>#113</strong><span className="source-pill">ZIP 90001</span></div>
+              <div className="metric-inline align-right"><strong>#123</strong><span className="source-pill">ZIP 90001</span></div>
             </div>
             <div className="snapshot-box">
               <span>今日商品详情已核验</span>
-              <strong>#113</strong>
+              <strong>#123</strong>
               <small>Clitoral Vibrators</small>
               <a href="https://www.amazon.com/dp/B0GGTPHQZK" target="_blank" rel="noreferrer">查看来源 ↗</a>
             </div>
             <div className="bsr-summary">
-              <div><small>当前排名</small><strong>#113</strong></div>
-              <div><small>昨日排名</small><strong>#105</strong></div>
-              <div><small>日变化</small><strong className="bad">↓ 8</strong></div>
+              <div><small>当前排名</small><strong>#123</strong></div>
+              <div><small>上一有效日</small><strong>#113</strong></div>
+              <div><small>变化</small><strong className="bad">↓ 10</strong></div>
             </div>
           </article>
 
@@ -343,9 +372,10 @@ export default function Dashboard() {
             <div className="distribution-list">
               {[
                 ["Top 10", 0, 0, "coral"],
-                ["11 – 48", 9, 36, "orange"],
-                ["49 – 96", 8, 32, "blue"],
-                ["97 – 192", 3, 12, "slate"],
+                ["11 – 48", 7, 28, "orange"],
+                ["49 – 96", 6, 24, "blue"],
+                ["97 – 192", 5, 20, "slate"],
+                ["193 – 288", 2, 8, "slate"],
                 ["前6页未找到", 5, 20, "gray"],
               ].map(([label, value, percent, tone]) => (
                 <div className="distribution-row" key={label}>
