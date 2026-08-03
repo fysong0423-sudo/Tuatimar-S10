@@ -36,6 +36,7 @@ jobs:
         id: queue
         env:
           COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
+          SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
         run: node scripts/run-amazon-collector.mjs --claim-only
 
       - name: Install browser driver
@@ -47,10 +48,12 @@ jobs:
         env:
           COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
           CHROME_PATH: /usr/bin/google-chrome
+          SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
         run: node scripts/run-amazon-collector.mjs --execute
 
       - name: Mark startup failure
         if: failure() && steps.queue.outputs.has_job == 'true'
         env:
           COLLECTOR_API_URL: https://northstar-amazon-us.fysong0423.chatgpt.site/api/collector
+          SITES_BYPASS_TOKEN: ${{ secrets.SITES_BYPASS_TOKEN }}
         run: node scripts/run-amazon-collector.mjs --fail-claimed
