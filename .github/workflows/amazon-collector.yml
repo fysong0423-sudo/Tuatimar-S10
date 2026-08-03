@@ -1,5 +1,7 @@
 name: Amazon ranking collector
 
+# The push trigger is limited to this workflow file and is used for activation checks.
+
 on:
   push:
     branches: [main]
